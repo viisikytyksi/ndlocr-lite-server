@@ -28,6 +28,12 @@ bash run.sh
 
 起動後、ブラウザで `http://127.0.0.1:7860` を開いてください。
 
+### Windows の前提条件
+
+`onnxruntime` など Python 拡張モジュールの動作に **Visual C++ Redistributable 2015–2022（x64）** が必要です。未インストールの場合は起動時に DLL エラーが発生します。
+
+- ダウンロード: https://aka.ms/vs/17/release/vc_redist.x64.exe
+
 ### Python 3.14 環境の場合
 
 デフォルトの Python が 3.14 以上の場合は Python 3.13 を別途インストールしてから専用スクリプトを使用してください。
