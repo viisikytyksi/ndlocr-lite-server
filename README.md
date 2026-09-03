@@ -1,223 +1,94 @@
-# NDLOCR-Lite Server
+# NDLOCR-Lite Server（AMD / MIGraphX）
 
-[ndl-lab/ndlocr-lite](https://github.com/ndl-lab/ndlocr-lite)（国立国会図書館公開、CC BY 4.0）のフォークリポジトリです。
+[ndl-lab/ndlocr-lite](https://github.com/ndl-lab/ndlocr-lite) をHTTPサービスとして利用するためのフォークです。
 
-元のリポジトリに以下の機能を追加しています。
+## このリポジトリの経緯
 
-- **PDF 対応**: PDF を直接アップロードすると自動的に画像化して OCR 処理
-- **Web サーバー**: ブラウザから操作できる Web UI と JSON REST API
-- **PARSEQ バッチ推論最適化**: CUDA 環境で最大 **3.7 倍**の高速化（動的バッチ + FP16）
+実装の経緯は次の通りです。
 
-元のリポジトリの情報（モデル詳細・OCR 結果例・学習手順・ライセンス等）は [ndl-lab/ndlocr-lite](https://github.com/ndl-lab/ndlocr-lite) を参照してください。
-
-<img src="./docs/screenshot.png" width="800">
-
----
-
-## セットアップ・起動
-
-Python 3.11〜3.13 が必要です（3.14 は `onnxruntime-gpu` が `numpy<2.3` を要求する一方で 3.14 向け wheel が未提供のためインストール不可）。リポジトリをクローン後、付属のスクリプトを実行してください。仮想環境の作成・依存パッケージのインストール・サーバー起動をまとめて行います。
-
-```bash
-# Windows
-run.bat
-
-# macOS / Linux
-bash run.sh
+```text
+ndl-lab/ndlocr-lite
+  -> ponpaku/ndlocr-lite-server       （CUDA向けサーバーフォーク）
+  -> viisikytyksi/ndlocr-lite-server  （本リポジトリ。AMD/MIGraphX対応）
 ```
 
-起動後、ブラウザで `http://127.0.0.1:7860` を開いてください。
+本リポジトリは、前段のサーバー実装を引き継ぎつつ、AMD GPUで実用的に動かすことを主目的にしています。CUDA向けフォークに由来するコードや説明が残っている場合がありますが、CUDAの性能値を本リポジトリの実績として扱いません。
 
-### Windows の前提条件
+## 現在の対応状況
 
-`onnxruntime` など Python 拡張モジュールの動作に **Visual C++ Redistributable 2015–2022（x64）** が必要です。未インストールの場合は起動時に DLL エラーが発生します。
+- **AMD / MIGraphX**: AMD Radeon RX 7900 XTX、`gfx1100`、ROCm 10環境で実機検証済み
+- **CPU**: フォールバックとして利用可能
+- **Vulkan**: 実行経路とベンチマーク用ツールを含む。LLMserverでの速度比較は未確定
+- **CUDA**: 前段フォーク由来の互換コードが残る場合はあるが、現行の主対象・検証結果ではない
 
-- ダウンロード: https://aka.ms/vs/17/release/vc_redist.x64.exe
+### AMD実機での測定値
 
-### Python 3.14 環境の場合
+LLMserver上で、同一のPARSEQ行画像ベンチマークを実行した実測値です。PDF全体の処理時間ではありません。
 
-デフォルトの Python が 3.14 以上の場合は Python 3.13 を別途インストールしてから専用スクリプトを使用してください。
+| 実行環境 | 処理速度 |
+|---|---:|
+| CPU | 28.11 lines/s |
+| AMD / MIGraphX | 83.99 lines/s |
 
-**Windows（py ランチャー使用）**
+この測定条件では、MIGraphXがCPUの約3.0倍でした。別のGPU・モデル・バッチサイズ・ドライバーで同じ値になることは保証しません。
 
-```powershell
-# Python 3.13 をインストール（未インストールの場合）
-# https://www.python.org/downloads/ からダウンロード、または:
-winget install Python.Python.3.13
+## 主な機能
 
-# Python 3.13 専用スクリプトで起動（.venv313 を作成）
-run-py313.bat
-```
+- 画像・PDFのアップロードとOCR
+- FastAPI + UvicornによるWeb UI / JSON REST API
+- PDFページの画像化とページ単位の並列処理
+- PARSEQ行認識のバッチ処理（`processing.max_batch`で上限指定）
+- ONNX Runtime Execution Providerの実体確認と`/api/status`での状態表示
+- MIGraphXのコンパイル済みモデルキャッシュによる再起動後の再利用
 
-**macOS / Linux**
+## セットアップ
 
-```bash
-# Python 3.13 をインストール（未インストールの場合）
-# Ubuntu/Debian:
-sudo apt install python3.13 python3.13-venv
-# macOS (Homebrew):
-brew install python@3.13
-
-# Python 3.13 専用スクリプトで起動（.venv313 を作成）
-bash run-py313.sh
-```
-
-## 設定
-
-`config.toml.example` を `config.toml` にコピーして編集してください（run スクリプトが自動でコピーします）。各項目の説明はファイル内のコメントを参照してください。
+Python 3.11〜3.13を使用してください。AMD GPU環境では、ROCmとMIGraphXを環境に合わせて先に用意し、その後に依存関係をインストールします。
 
 ```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements-amdgpu.txt
 cp config.toml.example config.toml
 ```
 
-requirements ファイルは OS に応じて自動選択されます（Windows/Linux: `requirements-gpu.txt`、macOS: `requirements-cpu.txt`）。
+`config.toml`では、AMD GPUを使う場合は`[runtime]`の`device = "amdgpu"`を指定できます。最初は`processing.max_batch = 1`で動作確認し、安定してから負荷を上げてください。ROCm/MIGraphXのパッケージ名やインストール方法は、GPUとROCmの組み合わせによって異なります。
 
-API リファレンス・設定リファレンス・アーキテクチャの詳細は **[dev-doc.md](./dev-doc.md)** を参照してください。
-
----
-
-## このフォークについて
-
-### 目的
-
-ndlocr-lite はデスクトップ GUI またはコマンドラインから使うツールとして設計されており、入力は画像ファイルのみ対応していた。
-このリポジトリでは以下を目的としてフォークした。
-
-- **PDF 対応**: PDF を直接受け付け、自動的にページ画像へ変換して OCR 処理
-- **ローカル Web サーバー**: ブラウザや外部ツールから HTTP 経由で OCR を利用できる環境の提供
-- **CUDA バッチ推論**: PARSEQ モデルの動的バッチ化による処理速度の向上
-- **FP16 推論**: PARSEQ ONNX モデルの FP16 変換（`tools/convert_fp16.py`）による追加高速化
-
-### 加えた変更
-
-#### 1. Web OCR サーバーの追加（`server/`）
-
-FastAPI + Uvicorn による Web サーバーを新設した。
-
-- ブラウザから画像・PDF をアップロードして OCR を実行できる
-- JSON API を備え、外部ツールからの呼び出しにも対応
-- PDF は pypdfium2 でページ画像に変換してから処理
-- 複数ページを `processing.page_workers` 枚単位でチャンク処理
-- DEIM 検出をチャンク内で並列実行し、全ページの行画像をまとめて 1 回の cascade batch に投入（ページ間クロスバッチ化）
-- DEIM 検出器はプール管理でスレッド安全性を確保
-- CUDA / cuDNN の有無を起動時に自動判定し、利用可能なら GPU に切り替え
-- CUDA 起動時に全バッチサイズでウォームアップ推論を実行し、CUDA メモリアリーナを事前展開
-- `vram.reload` 設定により、処理後の VRAM 使用量が閾値を超えた場合のセッション解放・再ロードをオプションで有効化
-
-#### 2. PARSEQ モデルの動的バッチ対応（`tools/patch_dynamic_batch_v2.py`）
-
-**背景と問題**
-
-フォーク元の ONNX モデルはバッチサイズ=1 でエクスポートされており、複数の文字行画像を一括して GPU に投入できないため、CUDA の並列演算能力を活かせていなかった。
-
-**なぜ再エクスポートではなくグラフ手術なのか**
-
-PyTorch モデルを `dynamic_axes` 付きで再エクスポートする方法を試みたが、PARSEQ の AR ループはエクスポート時に完全展開（unroll）される仕様であり、生成される大量の `Where` ノードに対して onnxruntime 1.23.2 が `NOT_IMPLEMENTED` を返すため実行できない。元の ONNX ファイルにはこの問題がないため、**元グラフを直接編集する（graph surgery）** アプローチを採用した。元の重みはそのまま保持されるため、認識精度への影響はない。
-
-**PARSEQ ONNX グラフの構造**
-
-```
-入力画像 [B, 3, H, W]
-  ↓
-Vision Transformer エンコーダ（12 ブロック）
-  → エンコーダ出力 [B, N_patches, 192]   ← N_patches = 128 / 192 / 384（画像幅による）
-  ↓
-Transformer デコーダ（AR ループ × max_label_length 回、完全展開）
-  各ステップ t：
-    自己注意（self-attn）  ← 過去トークン列 [t, B, 192] を処理
-    交差注意（cross-attn） ← エンコーダ出力を参照
-    → 語彙スコア [B, vocab_size]  → ScatterND でバッファに書き込み
-  ↓
-リファインメントステップ（全 T トークンを一括処理）
-  ↓
-出力 [B, T+1, vocab_size]
-```
-
-**修正パターン**
-
-| パターン | 対象形状 | 修正 |
-|---------|---------|------|
-| **A** | Reshape 定数 `[1, ...]` | `[B, ...]` に動的化 |
-| **B** | Reshape 定数 `[S, 1, ...]` | `[S, B, ...]` に動的化 |
-| **C** | Reshape 定数 `[S, n_h, d_h]`（n_h × d_h = 192） | `[S, B×n_h, d_h]` へ変更 |
-| **CX** | Reshape 定数 `[N_H, 1, T]`（リファインメント注意マスク用） | `[B×N_H, 1, T]` へ変更 |
-| **D** | Reshape 定数 `[S, 192]`（S > 1） | `[S×B, 192]` へ変更 |
-| **E** | Initializer として埋め込まれた位置クエリ Q `[n_h, T, d_h]` | `Tile(Q, [B, 1, 1])` で複製 |
-| **F** | `ScatterND`（AR ループの出力バッファ書き込み） | `ScatterElements(axis=1)` に置換 |
-| **G** | Concat に直接渡される定数 `[1, 1]`（BOS トークン） | `Tile([1,1], [B, 1])` で複製 |
-
-動的バッチ対応済みの `*_dynamic.onnx` はリポジトリに含まれており、CUDA 環境ではクローン後すぐにバッチ推論が有効になります。`*_dynamic.onnx` を再生成する場合（元モデルを差し替えた場合など）：
+## 起動
 
 ```bash
-python tools/patch_dynamic_batch_v2.py
+python server/main.py
 ```
 
-#### 3. `src/parseq.py` の更新
+既定の待受ポートは`7860`です。Tailscaleなど限定したネットワークから利用する場合は、`config.toml`の`[server] host`を実際の待受アドレスに設定してください。
 
-- `*_dynamic.onnx` が `src/model/` に存在する場合、自動的にそちらを読み込む
-- `read_batch()` が真のバッチ推論（1 回の `session.run` 呼び出し）を実行するよう変更
-- 動的モデルが存在しない場合は従来の逐次処理にフォールバック
-- `max_batch` 上限を設けてバッチを分割し VRAM 消費を制限
-
-#### 4. PARSEQ FP16 対応（`tools/convert_fp16.py`）
-
-動的バッチ対応とは独立した、モデルの重みを FP32→FP16 に変換することによる追加高速化。
-
-**仕組み**
-
-`onnxconverter_common.float16.convert_float_to_float16(model, keep_io_types=True)` で `*_dynamic.onnx` の重みを FP16 化し `*_dynamic_fp16.onnx` を生成する。
-`keep_io_types=True` を指定することで入出力は FP32 のままとなり、前処理・後処理の変更は不要。
-NVIDIA Ampere 世代以降の GPU（RTX 30xx など）は Tensor Core により FP16 演算を FP32 の約 2 倍の速度で実行できる。
-
-**FP16 モデルの生成**
-
-`*_dynamic_fp16.onnx` はリポジトリに含まれており、クローン後すぐに利用可能。
-再生成する場合（モデルを差し替えた場合など）：
+起動後の確認:
 
 ```bash
-python tools/convert_fp16.py
+curl http://127.0.0.1:7860/api/status
 ```
 
-**設定**
+## APIの概要
 
-`config.toml` の `processing.precision`：
+- `GET /api/status`: モデル、既定デバイス、利用可能なExecution Providerを返す
+- `POST /api/jobs`: `file`（画像またはPDF）をmultipartで送信してジョブを作成
+- `GET /api/jobs/{job_id}`: ジョブの状態と結果を取得
 
-| 値 | 動作 |
-|----|------|
-| `"auto"` | CUDA なら FP16、CPU なら FP32（推奨） |
-| `"fp16"` | FP16 強制（CUDA + `*_dynamic_fp16.onnx` が必要） |
-| `"fp32"` | FP32 強制 |
+詳細な設定・API仕様・アーキテクチャは[dev-doc.md](./dev-doc.md)を参照してください。
 
-> **注意**: FP16 は動的バッチ（`*_dynamic.onnx`）と組み合わせて機能する。
-> CPU では FP16 の恩恵がなく、FP32 に自動フォールバックする。
+## コンパイルキャッシュ
 
-### 結果
+MIGraphXは初回実行時にモデルをコンパイルすることがあります。`ORT_MIGRAPHX_MODEL_CACHE_PATH`を設定すると、同じモデル、入力形状、実行オプション、ROCm/ONNX Runtime/MIGraphX環境で、生成済みキャッシュを再利用できます。環境や設定を変えた場合は再コンパイルになることがあります。
 
-| モデル | fp32（`*_dynamic.onnx`） | fp16（`*_dynamic_fp16.onnx`） |
-|-------|------------------------|------------------------------|
-| parseq-ndl-16×256-30 | 1〜64 | 1〜64 |
-| parseq-ndl-16×384-50 | 1〜64 | 1〜64 |
-| parseq-ndl-16×768-100 | 1〜64 | 1〜64 |
+初回起動で問題が出る場合は、`max_batch=1`、`page_workers=1`、`MIOPEN_FIND_MODE=FAST`から切り分けてください。キャッシュを作った後の通常の再起動で、毎回コンパイルすることを前提にはしていません。
 
-検証環境：Intel Core i7-14700K / NVIDIA GeForce RTX 3060 12GB
+## 参考
 
-**PARSEQ マイクロベンチマーク**（行画像 16 枚、`tools/benchmark_batch.py`）
+- [ndl-lab/ndlocr-lite](https://github.com/ndl-lab/ndlocr-lite)
+- [ponpaku/ndlocr-lite-server](https://github.com/ponpaku/ndlocr-lite-server)
+- [viisikytyksi/ndlocr-lite-server](https://github.com/viisikytyksi/ndlocr-lite-server)
+- [ONNX Runtime MIGraphX Execution Provider](https://onnxruntime.ai/docs/execution-providers/MIGraphX-ExecutionProvider.html)
 
-| 環境 | モード | 16 行あたり | 1 行あたり | 対 CPU 逐次比 |
-|------|-------|------------|-----------|--------------|
-| CPU  | 逐次処理 | 335 ms | 20.9 ms | 1.0× |
-| CPU  | バッチ推論 fp32（batch=16） | 257 ms | 16.1 ms | 1.3× |
-| CUDA | 逐次処理 | 160 ms | 10.0 ms | 2.1× |
-| CUDA | バッチ推論 fp32（batch=16） | 52 ms | 3.2 ms | **6.4×** |
-| CUDA | バッチ推論 fp16（batch=16）※ | ~43 ms | ~2.7 ms | **~7.8×** |
+## ライセンス
 
-※ fp16 は PDF 64 ページの全体処理時間（71 s vs fp32 86 s）から換算した推定値。
-
-**PDF 全体処理（64 ページ、page\_workers=5、max\_batch=64、CUDA）**
-
-| 精度 | 処理時間 | 高速化率（対 fp32） |
-|------|---------|-------------------|
-| FP32 | 86 s | 1.0× |
-| FP16 | 71 s | **1.21×** |
-
-2 つの最適化（動的バッチ + FP16）を組み合わせることで、CUDA 環境では CPU 逐次処理と比べて最大約 **3.7 倍**（CUDA バッチ内での比較）の高速化が得られる。
+原典のライセンスおよびモデルの利用条件に従います。詳細は原典リポジトリを確認してください。
