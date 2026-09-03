@@ -23,23 +23,21 @@ ndl-lab/ndlocr-lite
 
 ### 上流README準拠のAMD実機ベンチマーク
 
-上流READMEの`tools/benchmark_batch.py`に合わせ、LLMserver（RX 7900 XTX / `gfx1100` / ROCm 10）で、256×16のPARSEQ行画像16枚、ウォームアップ2回・測定5回で実行しました。各値は同じ16枚を1回処理する平均時間です。
+フォーク元CUDA版の`tools/benchmark_batch.py`と同じ比較方法（同じ16枚の256×16 PARSEQ行画像、ウォームアップ2回、測定5回、逐次処理とバッチ処理）で、LLMserver（RX 7900 XTX / `gfx1100` / ROCm 10）にて2026-09-03に実測しました。各値は16枚を1回処理する平均時間です。AMDはMIGraphXのbatch 1/2/4/8/16キャッシュを事前コンパイルした後に測定しています。
 
 | 実行環境 | 精度 | 逐次: 16行 | バッチ: 16行 | バッチ速度向上 |
 |---|---|---:|---:|---:|
-| CPU | FP32 | 341.9 ms (21.4 ms/行) | 292.8 ms (18.3 ms/行) | 1.17× |
-| AMD / MIGraphX | FP16 | 105.8 ms (6.6 ms/行) | 105.4 ms (6.6 ms/行) | 1.00× |
+| CPU | FP32 | 343.1 ms (21.4 ms/行) | 294.9 ms (18.4 ms/行) | 1.16× |
+| AMD / MIGraphX | FP16 | 398.5 ms (24.9 ms/行) | 377.1 ms (23.6 ms/行) | 1.06× |
 
-AMD行は安定運用中の`max_batch=1`・既存MIGraphXキャッシュを使った測定であり、`read_batch()`は16回の単行推論に分割されます。そのため、AMDの真のbatch16性能ではありません。真のbatch16は本番キャッシュと分離して120秒制限で試しましたが、MIGraphXコンパイル完了前に終了したため未掲載です。上表のCPUバッチとAMD行を同じ意味のバッチ性能として比較しないでください。
+このCPU/AMD行はフォーク元CUDA版と同じベンチマーク形式で取得できています。ただし、フォーク元のCUDA実機（RTX 3060）とCUDA値はこのAMDホストでは再現していないため、CUDA行との性能順位や倍率を直接比較するものではありません。測定はPARSEQ行認識のマイクロベンチマークであり、DEIM検出・PDF変換・HTTP処理を含むPDF全体の処理時間ではありません。
 
 再測定コマンド:
 
 ```bash
-python tools/benchmark_batch.py --device CPU --repeat 5 --warmup 2
-python tools/benchmark_batch.py --device amdgpu --precision fp16 --repeat 5 --warmup 2 --max-batch 1
+python tools/benchmark_batch.py --device CPU --precision fp32 --repeat 5 --warmup 2 --max-batch 16
+python tools/benchmark_batch.py --device amdgpu --precision fp16 --repeat 5 --warmup 2 --max-batch 16
 ```
-
-この測定はPARSEQ行認識のマイクロベンチマークであり、DEIM検出・PDF変換・HTTP処理を含むPDF全体の処理時間ではありません。
 ## 主な機能
 
 - 画像・PDFのアップロードとOCR
