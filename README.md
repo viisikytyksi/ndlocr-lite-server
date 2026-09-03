@@ -42,7 +42,7 @@ ndl-lab/ndlocr-lite
 | AMD / MIGraphX | 逐次処理 FP16 | 398.5 ms | 24.9 ms | 0.86× |
 | AMD / MIGraphX | バッチ推論 FP16（batch=16） | 377.1 ms | 23.6 ms | 0.91× |
 
-このCPU/AMD行はフォーク元CUDA版と同じベンチマーク形式で取得できています。ただし、フォーク元のCUDA実機（RTX 3060）とCUDA値はこのAMDホストでは再現していないため、CUDA行との性能順位や倍率を直接比較するものではありません。測定はPARSEQ行認識のマイクロベンチマークであり、DEIM検出・PDF変換・HTTP処理を含むPDF全体の処理時間ではありません。
+今回の測定では、AMD/MIGraphX FP16はCPU FP32に対して高速化されていません。逐次処理はCPUの0.86倍、batch=16は0.91倍でした。測定はPARSEQ行認識のマイクロベンチマークであり、DEIM検出・PDF変換・HTTP処理を含むPDF全体の処理時間ではありません。
 
 再測定コマンド:
 
