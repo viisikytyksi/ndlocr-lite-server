@@ -24,23 +24,32 @@ def bench(device, n_warmup=2, n_repeat=5, use_fp16=False, max_batch=0):
     label = f"{device}" + (" fp16" if use_fp16 else " fp32")
     print(f"\n[{label}] dynamic={p._has_dynamic_batch}, model={__import__('pathlib').Path(p._preferred_path()).name}")
 
-    # warmup
+    # Warm up both execution paths separately.  A dynamic MIGraphX session
+    # may lazily compile the batch-1 shape on the first read(), even after
+    # read_batch() warmup; measuring that call would include compilation.
     for _ in range(n_warmup):
         p.read_batch(imgs)
+    for img in imgs:
+        p.read(img)
 
     # sequential (read one by one)
-    t0 = time.perf_counter()
+    seq_times = []
     for _ in range(n_repeat):
+        t0 = time.perf_counter()
         for img in imgs:
             p.read(img)
-    seq_t = (time.perf_counter() - t0) / n_repeat
+        seq_times.append(time.perf_counter() - t0)
+    # Exclude one possible lazy-allocation/compilation outlier.
+    seq_t = sum(seq_times[1:] or seq_times) / len(seq_times[1:] or seq_times)
     print(f"  Sequential ({N} imgs): {seq_t*1000:.1f} ms  ({seq_t/N*1000:.1f} ms/img)")
 
     # batch
-    t0 = time.perf_counter()
+    bat_times = []
     for _ in range(n_repeat):
+        t0 = time.perf_counter()
         p.read_batch(imgs)
-    bat_t = (time.perf_counter() - t0) / n_repeat
+        bat_times.append(time.perf_counter() - t0)
+    bat_t = sum(bat_times[1:] or bat_times) / len(bat_times[1:] or bat_times)
     print(f"  Batch     ({N} imgs): {bat_t*1000:.1f} ms  ({bat_t/N*1000:.1f} ms/img)")
     print(f"  Speedup: {seq_t/bat_t:.2f}x")
 
