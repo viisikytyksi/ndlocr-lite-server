@@ -98,6 +98,18 @@ curl http://127.0.0.1:7860/api/status
 
 MIGraphXは初回実行時にモデルをコンパイルすることがあります。`ORT_MIGRAPHX_MODEL_CACHE_PATH`を設定すると、同じモデル、入力形状、実行オプション、ROCm/ONNX Runtime/MIGraphX環境で、生成済みキャッシュを再利用できます。環境や設定を変えた場合は再コンパイルになることがあります。
 
+本番サービスと事前コンパイル・ベンチマークでは、次の条件を揃え、同じモデルキャッシュを指定してください。
+
+```bash
+export ORT_MIGRAPHX_MODEL_CACHE_PATH=/path/to/shared/migraphx/models
+export ORT_MIGRAPHX_CACHE_PATH=/path/to/shared/migraphx
+export MIOPEN_FIND_MODE=FAST
+export MIOPEN_CUSTOM_CACHE_DIR=/path/to/shared/miopen
+export MIOPEN_USER_DB_PATH=/path/to/shared/miopen-db
+```
+
+`config.toml`の`[runtime].migraphx_model_cache_path`でもモデルキャッシュを指定できます（明示的な環境変数が優先）。`device`、FP32/FP16モデル、入力サイズ、`max_batch`、Execution Providerのオプション、ROCm/ONNX Runtime/MIGraphXのバージョンが変わると、同じキャッシュを再利用できない場合があります。動的batchを使う場合は、実際に使うbucket（例：1/2/4/8/16）を一度ウォームアップして生成します。
+
 初回起動で問題が出る場合は、`max_batch=1`、`page_workers=1`、`MIOPEN_FIND_MODE=FAST`から切り分けてください。キャッシュを作った後の通常の再起動で、毎回コンパイルすることを前提にはしていません。
 
 ## 参考

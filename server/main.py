@@ -78,6 +78,12 @@ def _c(section: str, key: str, default):
     """Get a value from config.toml with a fallback default."""
     return _cfg.get(section, {}).get(key, default)
 
+# Set the MIGraphX model cache before importing ONNX Runtime.  An explicit
+# environment variable always wins, so deployments can override the config.
+_migraphx_cache = _c("runtime", "migraphx_model_cache_path", "")
+if _migraphx_cache and not os.environ.get("ORT_MIGRAPHX_MODEL_CACHE_PATH"):
+    os.environ["ORT_MIGRAPHX_MODEL_CACHE_PATH"] = str(Path(_migraphx_cache).expanduser())
+
 import numpy as np
 import uvicorn
 from fastapi import FastAPI, File, Form, Request, UploadFile
@@ -98,6 +104,7 @@ sys.path.append(str(_src_dir))
 
 import ocr as _ndlocr
 from onnx_backend import available_providers, is_accelerated, provider_for
+from migraphx_cache import make_profile, validate_profile
 from ndl_parser import convert_to_xml_string3 as _convert_to_xml_string3
 from reading_order.xy_cut.eval import eval_xml as _eval_xml
 from ocr import process_cascade_batch as _process_cascade_batch
@@ -658,6 +665,25 @@ def _startup() -> None:
         f"intra_op_threads={INTRA_OP_THREADS}",
         flush=True,
     )
+
+    if device != "cpu" and use_batch and os.environ.get("ORT_MIGRAPHX_MODEL_CACHE_PATH"):
+        model_paths = [
+            _src_dir / "model" / "parseq-ndl-16x768-100-tiny-165epoch-tegaki2.onnx",
+            _src_dir / "model" / "parseq-ndl-16x256-30-tiny-192epoch-tegaki3.onnx",
+            _src_dir / "model" / "parseq-ndl-16x384-50-tiny-146epoch-tegaki2.onnx",
+        ]
+        buckets = []
+        bucket = 1
+        while bucket <= MAX_PARSEQ_BATCH:
+            buckets.append(bucket)
+            bucket *= 2
+        expected = make_profile(model_paths, device=device, use_fp16=use_fp16,
+                                max_batch=MAX_PARSEQ_BATCH, buckets=buckets)
+        ok, message = validate_profile(expected)
+        print(f"[migraphx-cache] {message}", flush=True)
+        if not ok and os.environ.get("NDLOCR_CACHE_REQUIRE_MATCH", "0") == "1":
+            raise RuntimeError(message + " (NDLOCR_CACHE_REQUIRE_MATCH=1)")
+
     # Raises on missing model files – server will not start
     _engine = NDLOCREngine(src_dir=_src_dir, device=device, max_workers=MAX_PAGE_WORKERS, use_batch=use_batch, max_batch=MAX_PARSEQ_BATCH, intra_op_num_threads=INTRA_OP_THREADS, use_fp16=use_fp16)
 
