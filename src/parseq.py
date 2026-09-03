@@ -4,6 +4,7 @@ import time
 import yaml
 import onnxruntime
 import numpy as np
+from onnx_backend import is_accelerated, provider_for, session_providers
 from typing import Tuple, List
 
 class PARSEQ:
@@ -33,7 +34,7 @@ class PARSEQ:
         Priority (CPU):          *_dynamic.onnx > original  (fp16 no benefit on CPU)
         """
         p = Path(self.model_path)
-        if self.device.casefold() == "cuda" and self.use_fp16:
+        if is_accelerated(self.device) and self.use_fp16:
             fp16 = p.with_name(p.stem + "_dynamic_fp16" + p.suffix)
             if fp16.exists():
                 return str(fp16)
@@ -43,21 +44,21 @@ class PARSEQ:
     def create_session(self) -> None:
         opt_session = onnxruntime.SessionOptions()
         opt_session.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-        providers = ['CPUExecutionProvider']
         dev = self.device.casefold()
         if dev == "cpu":
             t = self.intra_op_num_threads
             if t >= 0:
                 opt_session.intra_op_num_threads = t
                 opt_session.inter_op_num_threads = 1
-        elif dev == "cuda":
-            providers = [
-                ('CUDAExecutionProvider', {'arena_extend_strategy': 'kSameAsRequested'}),
-                'CPUExecutionProvider',
-            ]
+        providers = session_providers(self.device)
         # Prefer the best available model variant
         load_path = self._preferred_path()
         session = onnxruntime.InferenceSession(load_path, opt_session, providers=providers)
+        expected_provider = provider_for(self.device)
+        if expected_provider and expected_provider not in session.get_providers():
+            raise RuntimeError(
+                f"requested {expected_provider}, active providers: {session.get_providers()}"
+            )
         self.session = session
         self.model_inputs = self.session.get_inputs()
         self.input_names = [self.model_inputs[i].name for i in range(len(self.model_inputs))]
@@ -66,7 +67,7 @@ class PARSEQ:
         self.output_names = [self.model_output[i].name for i in range(len(self.model_output))]
         self.input_height, self.input_width = self.input_shape[2:]
         self._has_dynamic_batch = "_dynamic" in Path(load_path).stem
-        if self.device.casefold() == "cuda" and self._has_dynamic_batch:
+        if is_accelerated(self.device) and self._has_dynamic_batch:
             self._warmup()
 
     def _warmup(self) -> None:
@@ -83,7 +84,7 @@ class PARSEQ:
             dummy = np.zeros((b, 3, H, W), dtype=np.float32)
             self.session.run(self.output_names, {self.input_names[0]: dummy})
             b *= 2
-        print(f"[PARSEQ] warmup done ({Path(self.model_path).stem}, cuda, buckets 1-{cap})", flush=True)
+        print(f"[PARSEQ] warmup done ({Path(self.model_path).stem}, {self.device}, buckets 1-{cap})", flush=True)
 
     def postprocess(self, outputs):
         predictions = np.squeeze(outputs).T

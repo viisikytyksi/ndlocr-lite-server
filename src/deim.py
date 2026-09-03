@@ -3,6 +3,7 @@ import time
 import yaml
 import onnxruntime
 import numpy as np
+from onnx_backend import is_accelerated, provider_for, session_providers
 from typing import Tuple, List
 import xml.etree.ElementTree as ET
 
@@ -32,19 +33,19 @@ class DEIM:
     def create_session(self) -> None:
         opt_session = onnxruntime.SessionOptions()
         opt_session.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-        providers = ['CPUExecutionProvider']
         dev = self.device.casefold()
         if dev == "cpu":
             t = self.intra_op_num_threads
             if t >= 0:
                 opt_session.intra_op_num_threads = t
                 opt_session.inter_op_num_threads = 1
-        elif dev == "cuda":
-            providers = [
-                ('CUDAExecutionProvider', {'arena_extend_strategy': 'kSameAsRequested'}),
-                'CPUExecutionProvider',
-            ]
+        providers = session_providers(self.device)
         session = onnxruntime.InferenceSession(self.model_path, opt_session, providers=providers)
+        expected_provider = provider_for(self.device)
+        if expected_provider and expected_provider not in session.get_providers():
+            raise RuntimeError(
+                f"requested {expected_provider}, active providers: {session.get_providers()}"
+            )
         self.session = session
         self.model_inputs = self.session.get_inputs()
         self.input_names = [self.model_inputs[i].name for i in range(len(self.model_inputs))]
@@ -59,7 +60,7 @@ class DEIM:
                 self.classes = yaml_file['names']
                 self.color_palette = np.random.uniform(0, 255, size=(len(self.classes), 3))
 
-        if self.device.casefold() == "cuda":
+        if is_accelerated(self.device):
             dummy_img = np.zeros((1, 3, self.input_height, self.input_width), dtype=np.float32)
             dummy_size = np.array([[self.input_height, self.input_width]], np.int64)
             self.session.run(self.output_names, {self.input_names[0]: dummy_img, self.input_names[1]: dummy_size})

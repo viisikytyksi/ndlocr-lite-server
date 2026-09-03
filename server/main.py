@@ -97,6 +97,7 @@ _src_dir = Path(__file__).resolve().parents[1] / "src"
 sys.path.append(str(_src_dir))
 
 import ocr as _ndlocr
+from onnx_backend import available_providers, is_accelerated, provider_for
 from ndl_parser import convert_to_xml_string3 as _convert_to_xml_string3
 from reading_order.xy_cut.eval import eval_xml as _eval_xml
 from ocr import process_cascade_batch as _process_cascade_batch
@@ -623,27 +624,31 @@ def _startup() -> None:
     global _engine
     _setup_cuda_dll_paths()
 
-    if DEVICE_OVERRIDE in ("cuda", "cpu"):
+    if DEVICE_OVERRIDE in ("cuda", "cpu", "vulkan", "amdgpu", "amd", "rocm", "migraphx"):
         device = DEVICE_OVERRIDE
-        if device == "cuda" and not _check_cuda():
-            print("[startup] device=cuda but CUDA unavailable – falling back to cpu", flush=True)
+        if device != "cpu" and not _check_accelerator(device):
+            print(f"[startup] device={device} unavailable – falling back to cpu", flush=True)
             device = "cpu"
-    else:  # auto: cuda → cpu
-        device = "cuda" if _check_cuda() else "cpu"
+    else:  # auto: CUDA → Vulkan → MIGraphX → CPU
+        device = next(
+            (candidate for candidate in ("cuda", "vulkan", "amdgpu")
+             if _check_accelerator(candidate)),
+            "cpu",
+        )
 
     if BATCH_INFERENCE_SETTING == "true":
         use_batch = True
     elif BATCH_INFERENCE_SETTING == "false":
         use_batch = False
     else:  # auto
-        use_batch = (device == "cuda")
+        use_batch = is_accelerated(device)
 
     if PRECISION_SETTING == "fp16":
         use_fp16 = True
     elif PRECISION_SETTING == "fp32":
         use_fp16 = False
     else:  # auto: fp16 on CUDA, fp32 on CPU
-        use_fp16 = (device == "cuda")
+        use_fp16 = is_accelerated(device)
 
     print(
         f"[startup] device={device}, port={SERVER_PORT}, "
@@ -714,6 +719,16 @@ def _check_cuda() -> bool:
 
     return True
 
+
+def _check_accelerator(device: str) -> bool:
+    if device.casefold() == "cuda":
+        return _check_cuda()
+    try:
+        provider = provider_for(device)
+        return provider is not None and provider in available_providers()
+    except Exception as e:
+        print(f"[{device}] unavailable: {e}", flush=True)
+        return False
 
 def _diagnose_cudnn() -> None:
     """Print cuDNN-related DLL info to help locate installation issues."""
@@ -1226,6 +1241,7 @@ async def api_status():
         "model": "NDLOCR-Lite",
         "device_default": _engine.device,
         "cuda_available": cuda,
+        "onnxruntime_providers": available_providers(),
     }
 
 

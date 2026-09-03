@@ -1,0 +1,7 @@
+# Common dependencies plus the AMD ROCm ONNX Runtime wheel.
+# The wheel must match the ROCm version installed on the host.
+--extra-index-url https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2.1/
+-r requirements-cpu.txt
+onnxruntime-migraphx
+onnx
+onnxconverter-common

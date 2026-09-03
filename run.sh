@@ -39,9 +39,12 @@ if [ "$(uname -s)" = "Darwin" ]; then
 elif command -v nvidia-smi &>/dev/null && nvidia-smi &>/dev/null; then
     REQ_FILE="requirements-gpu.txt"
     echo "CUDA detected - using GPU (onnxruntime-gpu)"
+elif command -v rocminfo &>/dev/null || [ -d "/opt/rocm" ]; then
+    REQ_FILE="requirements-amdgpu.txt"
+    echo "ROCm detected - using AMD GPU (onnxruntime-migraphx)"
 else
     REQ_FILE="requirements-cpu.txt"
-    echo "CUDA not detected - using CPU (onnxruntime)"
+    echo "GPU runtime not detected - using CPU (onnxruntime)"
 fi
 
 if [ ! -d "$VENV" ]; then

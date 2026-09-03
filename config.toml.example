@@ -17,8 +17,10 @@ port = 7860
 # ---------------------------------------------------------------------------
 
 # 推論デバイス。
-# "auto" : CUDA → CPU の順で自動選択（推奨）
+# "auto" : CUDA → Vulkan → AMD/MIGraphX → CPU の順で自動選択（推奨）
 # "cuda" : CUDA 強制（利用不可の場合は cpu にフォールバック）
+# "amdgpu" : AMD GPU / MIGraphX 強制（利用不可の場合は cpu にフォールバック）
+# "vulkan" : Vulkan EP 強制（利用不可の場合は cpu にフォールバック）
 # "cpu"  : CPU 強制
 device = "auto"
 
@@ -32,7 +34,7 @@ device = "auto"
 page_workers = 2
 
 # PARSEQ バッチ推論モード。
-# "auto"  : device = "cuda" なら有効、cpu なら無効（推奨）
+# "auto"  : GPUバックエンドなら有効、cpu なら無効（推奨）
 # "true"  : 常に有効（CUDA 環境でのみ効果あり）
 # "false" : 常に無効（1 行ずつ推論。CPU マルチスレッド動作時はこちらが速い場合がある）
 batch_inference = "auto"
@@ -48,8 +50,8 @@ batch_inference = "auto"
 max_batch = 16
 
 # PARSEQ 推論精度。
-# "auto"  : device = "cuda" なら fp16、cpu なら fp32（推奨）
-# "fp16"  : FP16 強制（CUDA + *_dynamic_fp16.onnx が必要。tools/convert_fp16.py で生成）
+# "auto"  : GPUバックエンドなら fp16、cpu なら fp32（推奨）
+# "fp16"  : FP16 強制（*_dynamic_fp16.onnx が必要。tools/convert_fp16.py で生成）
 # "fp32"  : FP32 強制
 precision = "auto"
 
