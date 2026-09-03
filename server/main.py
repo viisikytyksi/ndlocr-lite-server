@@ -629,9 +629,9 @@ def _startup() -> None:
         if device != "cpu" and not _check_accelerator(device):
             print(f"[startup] device={device} unavailable – falling back to cpu", flush=True)
             device = "cpu"
-    else:  # auto: CUDA → Vulkan → MIGraphX → CPU
+    else:  # auto: AMD/MIGraphX → Vulkan → CPU (CUDA compatibility last)
         device = next(
-            (candidate for candidate in ("cuda", "vulkan", "amdgpu")
+            (candidate for candidate in ("amdgpu", "vulkan", "cuda")
              if _check_accelerator(candidate)),
             "cpu",
         )
@@ -647,7 +647,7 @@ def _startup() -> None:
         use_fp16 = True
     elif PRECISION_SETTING == "fp32":
         use_fp16 = False
-    else:  # auto: fp16 on CUDA, fp32 on CPU
+    else:  # auto: fp16 on accelerated backends, fp32 on CPU
         use_fp16 = is_accelerated(device)
 
     print(

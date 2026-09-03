@@ -2,7 +2,7 @@
 #
 # Run NDLOCR-Lite web server using Python 3.13.
 #
-# Python 3.14+ is not supported due to onnxruntime-gpu requiring numpy<2.3.
+# Python 3.14+ is not supported due to the available ONNX Runtime wheels requiring a compatible Python version.
 # Use this script when your default python3 is 3.14+ but Python 3.13 is also
 # installed.  Install Python 3.13 via your package manager or pyenv if needed.
 #
@@ -26,13 +26,13 @@ if [ ! -f "config.toml" ] && [ -f "config.toml.example" ]; then
     cp "config.toml.example" "config.toml"
 fi
 
-# --- Select requirements file based on OS / CUDA availability ---
+# --- Select requirements file based on OS / GPU runtime availability ---
 if [ "$(uname -s)" = "Darwin" ]; then
     REQ_FILE="requirements-cpu.txt"
     echo "macOS detected - using CPU (onnxruntime)"
 elif command -v nvidia-smi &>/dev/null && nvidia-smi &>/dev/null; then
     REQ_FILE="requirements-gpu.txt"
-    echo "CUDA detected - using GPU (onnxruntime-gpu)"
+    echo "NVIDIA GPU detected - using compatible GPU runtime"
 elif command -v rocminfo &>/dev/null || [ -d "/opt/rocm" ]; then
     REQ_FILE="requirements-amdgpu.txt"
     echo "ROCm detected - using AMD GPU (onnxruntime-migraphx)"

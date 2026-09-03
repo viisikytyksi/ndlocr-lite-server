@@ -31,14 +31,14 @@ if [ ! -f "config.toml" ] && [ -f "config.toml.example" ]; then
     cp "config.toml.example" "config.toml"
 fi
 
-# --- Select requirements file based on OS / CUDA availability ---
-# macOS never has CUDA. On Linux, check nvidia-smi.
+# --- Select requirements file based on OS / GPU runtime availability ---
+# Prefer ROCm on AMD hosts, then other GPU runtimes.
 if [ "$(uname -s)" = "Darwin" ]; then
     REQ_FILE="requirements-cpu.txt"
     echo "macOS detected - using CPU (onnxruntime)"
 elif command -v nvidia-smi &>/dev/null && nvidia-smi &>/dev/null; then
     REQ_FILE="requirements-gpu.txt"
-    echo "CUDA detected - using GPU (onnxruntime-gpu)"
+    echo "NVIDIA GPU detected - using compatible GPU runtime"
 elif command -v rocminfo &>/dev/null || [ -d "/opt/rocm" ]; then
     REQ_FILE="requirements-amdgpu.txt"
     echo "ROCm detected - using AMD GPU (onnxruntime-migraphx)"

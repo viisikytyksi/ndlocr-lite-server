@@ -1,4 +1,4 @@
-"""Benchmark batch vs sequential on CPU and CUDA."""
+"""Benchmark batch vs sequential across ONNX Runtime backends."""
 import argparse
 import sys, os, time
 REPO = __import__('pathlib').Path(__file__).resolve().parents[1]

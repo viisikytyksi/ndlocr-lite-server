@@ -8,7 +8,7 @@
 2. [API リファレンス](#api-リファレンス)
 3. [設定リファレンス](#設定リファレンス)
 4. [アーキテクチャ](#アーキテクチャ)
-5. [CUDA / GPU 利用](#cuda--gpu-利用)
+5. [GPUバックエンド利用](#gpuバックエンド利用)
 
 ---
 
@@ -63,8 +63,8 @@ src/model/
 ```json
 {
   "model": "NDLOCR-Lite",
-  "device_default": "cuda",
-  "cuda_available": true
+  "device_default": "amdgpu",
+  "cuda_available": false
 }
 ```
 
@@ -137,7 +137,7 @@ src/model/
   "task": "text",
   "linebreak_mode": "none",
   "page_count": 20,
-  "device": "cuda",
+  "device": "amdgpu",
   "reading_order": "auto",
   "error_detail": null
 }
@@ -190,13 +190,13 @@ host = "127.0.0.1"   # 外部公開時は "0.0.0.0"
 port = 7860
 
 [runtime]
-device = "auto"       # "auto" / "cuda" / "cpu"
+device = "auto"       # "auto" / "amdgpu" / "vulkan" / "cpu"
 
 [processing]
 page_workers      = 2      # PDF 並列処理ページ数 ＝ DEIM インスタンス数
-batch_inference   = "auto" # "auto"（CUDA のみ有効） / "true" / "false"
+batch_inference   = "auto" # "auto"（GPUバックエンドで有効） / "true" / "false"
 max_batch         = 16     # PARSEQ バッチサイズ上限（VRAM 使用量に影響）
-precision         = "auto" # "auto"（CUDA→fp16、CPU→fp32） / "fp16" / "fp32"
+precision         = "auto" # "auto"（GPU→fp16、CPU→fp32） / "fp16" / "fp32"
 
 [vram]
 reload              = "never"  # "never" / "always" / "auto"
@@ -206,12 +206,7 @@ reload_threshold_gb = 0.0      # "auto" 時のリロード閾値 GB（0 = 無効
 intra_op_threads = 1   # CPU モード時のスレッド数（-1 で onnxruntime 自動）
 ```
 
-CUDA / cuDNN のパスが自動検出できない場合は環境変数で補完できます。
-
-| 変数名 | 説明 |
-|---|---|
-| `CUDNN_PATH` | cuDNN の bin ディレクトリパス |
-| `CUDA_PATH` | CUDA Toolkit のルートパス |
+---
 
 ---
 
@@ -238,7 +233,7 @@ _process_sync（ワーカースレッド）
 _on_job_done（コールバック）
   └─ state = "done" / "canceled" / "error"
   └─ results を _jobs[job_id] に格納
-  └─ CUDA なら _cuda_cleanup_task() をスレッドで起動
+  └─ GPUバックエンドなら必要な後処理を実行
 
 GET /api/jobs/{job_id}
   └─ _jobs から state + 完了時は results を返す
@@ -283,26 +278,17 @@ DEIM セッションは常に保持されます（入力形状固定で VRAM 使
 
 ---
 
-## CUDA / GPU 利用
+## GPUバックエンド利用
 
-### 動作要件
+本フォークの主対象はAMD GPU / MIGraphXです。CPUフォールバックとVulkan Execution Providerにも対応します。CUDAは前段フォーク由来の互換経路として残る場合がありますが、既定の説明・実測・運用要件ではありません。
 
-| ソフトウェア | 要件 |
-|---|---|
-| CUDA Toolkit | 12.x |
-| cuDNN | **9.x**（8.x では動作しない） |
-| onnxruntime-gpu | 1.23.2 |
+### 対応デバイス
 
-### 起動時の自動判定ロジック
-
-1. `CUDNN_PATH` / `CUDA_PATH` 環境変数および標準インストールパスから DLL ディレクトリを探索し、プロセスの DLL 検索パスに追加（Windows）
-2. `cublasLt64_12.dll` と `cudnn64_9.dll` が読み込めるか確認
-3. 両方利用可能な場合のみ `device=cuda` で起動、それ以外は `cpu` にフォールバック
-
-### よくあるエラーと対処
-
-| ログ | 原因 | 対処 |
+| 設定値 | Execution Provider | 用途 |
 |---|---|---|
-| `cudnn64_9.dll not found` | cuDNN 9.x 未インストール | NVIDIA Developer から cuDNN 9.x をインストール |
-| `cublasLt64_12.dll not found` | CUDA 12.x Toolkit 未インストール | CUDA 12.x をインストールし `CUDA_PATH` を設定 |
-| cudnn DLL が `cudnn64_8.dll` と表示 | cuDNN 8.x がインストールされている | cuDNN 9.x に更新 |
+| `amdgpu` | `MIGraphXExecutionProvider` | AMD GPUの推奨設定 |
+| `vulkan` | `VulkanExecutionProvider` | Vulkan対応環境の比較用 |
+| `cpu` | `CPUExecutionProvider` | フォールバック・基準測定 |
+| `auto` | 利用可能なGPUを自動選択 | AMD/MIGraphXを優先 |
+
+実際に選択されたExecution Providerは`GET /api/status`の`onnxruntime_providers`で確認してください。GPUを使う場合、モデルの初回ロード時にコンパイルが発生することがあります。永続キャッシュを設定し、同じモデル・入力形状・実行環境で再利用してください。

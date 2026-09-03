@@ -17,8 +17,7 @@ port = 7860
 # ---------------------------------------------------------------------------
 
 # 推論デバイス。
-# "auto" : CUDA → Vulkan → AMD/MIGraphX → CPU の順で自動選択（推奨）
-# "cuda" : CUDA 強制（利用不可の場合は cpu にフォールバック）
+# "auto" : AMD/MIGraphX → Vulkan → CPU の順で自動選択（推奨）
 # "amdgpu" : AMD GPU / MIGraphX 強制（利用不可の場合は cpu にフォールバック）
 # "vulkan" : Vulkan EP 強制（利用不可の場合は cpu にフォールバック）
 # "cpu"  : CPU 強制
@@ -35,7 +34,7 @@ page_workers = 2
 
 # PARSEQ バッチ推論モード。
 # "auto"  : GPUバックエンドなら有効、cpu なら無効（推奨）
-# "true"  : 常に有効（CUDA 環境でのみ効果あり）
+# "true"  : 常に有効（GPUバックエンドで有効）
 # "false" : 常に無効（1 行ずつ推論。CPU マルチスレッド動作時はこちらが速い場合がある）
 batch_inference = "auto"
 
