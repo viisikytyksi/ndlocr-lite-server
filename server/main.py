@@ -668,9 +668,9 @@ def _startup() -> None:
 
     if device != "cpu" and use_batch and os.environ.get("ORT_MIGRAPHX_MODEL_CACHE_PATH"):
         model_paths = [
-            _src_dir / "model" / "parseq-ndl-16x768-100-tiny-165epoch-tegaki2.onnx",
             _src_dir / "model" / "parseq-ndl-16x256-30-tiny-192epoch-tegaki3.onnx",
             _src_dir / "model" / "parseq-ndl-16x384-50-tiny-146epoch-tegaki2.onnx",
+            _src_dir / "model" / "parseq-ndl-16x768-100-tiny-165epoch-tegaki2.onnx",
         ]
         buckets = []
         bucket = 1
